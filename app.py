@@ -1,5 +1,10 @@
 import streamlit as st
-from filters import load_and_clean_data, apply_filters
+from helpers.analytics import build_kpi_metrics
+from helpers.chatbot import SUGGESTED_QUESTIONS, answer_data_question
+from filters import (
+    apply_filters,
+    load_and_clean_data,
+)
 from charts import (plot_pie_chart, plot_histogram, plot_line_chart, 
                     plot_bar_chart, plot_scatter_plot, plot_box_plot, 
                     plot_heatmap, plot_area_chart, plot_count_plot, 
@@ -42,12 +47,13 @@ html, body, p, div, label, span {
 .kpi-card {
     background-color: var(--secondary-background-color);
     color: var(--text-color);
-    border-radius: 12px;
+    border-radius: 8px;
     border: 1px solid rgba(128, 128, 128, 0.15);
-    padding: 20px;
+    padding: 16px;
     text-align: center;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
     transition: transform 0.3s ease;
+    min-height: 118px;
 }
 
 .kpi-card:hover {
@@ -63,10 +69,11 @@ html, body, p, div, label, span {
 }
 
 .kpi-value {
-    font-size: 2.2rem;
+    font-size: 1.8rem;
     font-weight: 700;
     margin-top: 5px;
     color: var(--primary-color);
+    overflow-wrap: anywhere;
 }
 
 .tab-content {
@@ -92,6 +99,70 @@ html, body, p, div, label, span {
 </style>
 """, unsafe_allow_html=True)
 
+def render_kpi_grid(metrics):
+    for start in range(0, len(metrics), 5):
+        columns = st.columns(5)
+        for column, metric in zip(columns, metrics[start:start + 5]):
+            with column:
+                st.markdown(f"""
+                <div class="kpi-card">
+                    <div class="kpi-label">{metric["label"]}</div>
+                    <div class="kpi-value">{metric["value"]}</div>
+                </div>
+                """, unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+
+def render_data_chatbot(df, total_records):
+    st.subheader("Free Local Data Chatbot")
+
+    if "data_chat_messages" not in st.session_state:
+        st.session_state.data_chat_messages = [
+            {
+                "role": "assistant",
+                "content": "Ask me about the current filtered data.",
+            }
+        ]
+
+    if st.button("Clear Chat", key="clear_data_chat", use_container_width=True):
+        st.session_state.data_chat_messages = [
+            {
+                "role": "assistant",
+                "content": "Ask me about the current filtered data.",
+            }
+        ]
+        st.rerun()
+
+    st.caption("Popup questions")
+    for start in range(0, len(SUGGESTED_QUESTIONS), 2):
+        columns = st.columns(2)
+        for column, question in zip(columns, SUGGESTED_QUESTIONS[start:start + 2]):
+            with column:
+                if st.button(question, key=f"suggested_question_{start}_{question}", use_container_width=True):
+                    add_chat_exchange(question, df, total_records)
+                    st.rerun()
+
+    for message in st.session_state.data_chat_messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+
+    prompt = st.chat_input("Ask about records, classes, averages, ranges, or correlations")
+    if prompt:
+        answer = add_chat_exchange(prompt, df, total_records)
+
+        with st.chat_message("user"):
+            st.write(prompt)
+        with st.chat_message("assistant"):
+            st.write(answer)
+
+
+def add_chat_exchange(question, df, total_records):
+    answer = answer_data_question(question, df, total_records=total_records)
+    st.session_state.data_chat_messages.append({"role": "user", "content": question})
+    st.session_state.data_chat_messages.append({"role": "assistant", "content": answer})
+    return answer
+
+
 st.markdown("""
 <div class="title-container">
     <h1>🧬 Yeast Data Visualization Dashboard</h1>
@@ -102,41 +173,16 @@ st.markdown("""
 df_raw = load_and_clean_data("data/yeast.data")
 df_filtered = apply_filters(df_raw)
 
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.markdown(f"""
-    <div class="kpi-card">
-        <div class="kpi-label">Total Records</div>
-        <div class="kpi-value">{len(df_filtered)}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col2:
-    val = f"{df_filtered['mcg'].mean():.3f}" if not df_filtered.empty else "0.000"
-    st.markdown(f"""
-    <div class="kpi-card">
-        <div class="kpi-label">Average mcg Score</div>
-        <div class="kpi-value">{val}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col3:
-    val = f"{df_filtered['gvh'].mean():.3f}" if not df_filtered.empty else "0.000"
-    st.markdown(f"""
-    <div class="kpi-card">
-        <div class="kpi-label">Average gvh Score</div>
-        <div class="kpi-value">{val}</div>
-    </div>
-    """, unsafe_allow_html=True)
+render_kpi_grid(build_kpi_metrics(df_filtered, total_records=len(df_raw)))
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 if df_filtered.empty:
     st.warning("No data matches the current filters. Please adjust the filters in the sidebar.")
+    render_data_chatbot(df_filtered, total_records=len(df_raw))
 else:
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "Overview", "Distributions", "Trends", "Relationships (Bonus)", "Correlations", "Raw Data Table"
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "Overview", "Distributions", "Trends", "Relationships (Bonus)", "Correlations", "Raw Data Table", "Data Chatbot"
     ])
     
     with tab1:
@@ -255,4 +301,9 @@ else:
     with tab6:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)
         st.dataframe(df_filtered, width="stretch")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with tab7:
+        st.markdown('<div class="tab-content">', unsafe_allow_html=True)
+        render_data_chatbot(df_filtered, total_records=len(df_raw))
         st.markdown('</div>', unsafe_allow_html=True)

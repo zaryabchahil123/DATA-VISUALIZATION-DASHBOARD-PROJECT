@@ -15,6 +15,7 @@ Here is the exact step-by-step process of how this project was designed, coded, 
    - `data/` for the dataset.
    - `notebooks/` for exploratory scripts.
    - Root level for the app scripts (`app.py`, `charts.py`, `filters.py`).
+   - `helpers/` for supporting KPI and chatbot helper functions.
 2. Placed the `yeast.data` dataset inside `data/`. Since the raw dataset doesn't contain headers and is spaced-separated, we loaded it in Pandas using the space regex separator (`sep=r'\s+'`) and mapped the standard SWISS-PROT column headers:
    - `Sequence_Name`: Accession name
    - `mcg`: McGeoch's signal sequence recognition method
@@ -33,6 +34,14 @@ Here is the exact step-by-step process of how this project was designed, coded, 
 
 ### Step 3: Isolating Filters (`filters.py`)
 - Created custom filtering logic. Rather than cluttering the main app file, all query and slicing operations were isolated here.
+- Added one central pure filtering function, `filter_dataframe`, so every chart receives the same filtered dataset through `df_filtered`.
+- Implemented all filters applicable to the Yeast dataset:
+  - Search/Text Filter: filters by `Sequence_Name`.
+  - Category Filter: filters by one or more `Class` values.
+  - Multi-Select Filter: filters discrete indicator columns `erl` and `pox`.
+  - Numerical Range Sliders: filters all numerical columns (`mcg`, `gvh`, `alm`, `mit`, `erl`, `pox`, `vac`, `nuc`).
+  - Reset/Clear Filters: restores all sidebar filters to defaults.
+- Date/Time Range Filter is not shown because the provided `yeast.data` file has no date or time column.
 - **Handling UI Crashes (Human touch):** During testing, we encountered a Streamlit crash. If the active filters reduced the data rows to a small subset sharing the exact same parameter value (e.g. `mcg = 0.41`), the dynamic slider's minimum and maximum limits collapsed to the same number. Streamlit's slider widget throws an exception in this state. 
 - To fix this, the filter boundaries and class options are calculated from the *original* raw dataset (`orig_df`) before slicing, locking the sliders in place. We also added safety check pads (`if mcg_min == mcg_max: mcg_max += 0.01`) as a secondary safeguard.
 
@@ -53,8 +62,10 @@ Developed the 10 mandatory plots plus a bonus chart, adding specific adjustments
 ### Step 5: Designing the Streamlit UI (`app.py`)
 - **Theme Matching:** Matplotlib figures render with a default white background, which looks jarring in dark mode. We solved this by setting both the figure and axes backgrounds to transparent (`fig.patch.set_alpha(0.0)`) and styling all axes labels, ticks, and grids with slate grey (`#8a95a5`). This makes the plots blend perfectly in both dark and light modes.
 - **Title and Header UI:** Added a deep blue gradient banner (`#1e3c72` to `#2a5298`) centered with a protein emoji (`🧬`) to make the top look clean and bold.
-- **Custom CSS KPI Cards:** Wrote metric panels using CSS variables (`var(--secondary-background-color)` and `var(--primary-color)`) so they dynamically adapt to dark/light theme shifts.
+- **Custom CSS KPI Cards:** Wrote metric panels using CSS variables (`var(--secondary-background-color)` and `var(--primary-color)`) so they dynamically adapt to dark/light theme shifts. The top analytics section now includes total records, filtered coverage, visible class count, dominant class, and averages for `mcg`, `gvh`, `alm`, `mit`, `vac`, and `nuc`.
 - **Centered Chart Names:** Positioned the names of the plots centered directly under the charts. The chart name is bolded on line one, and the description sits below in plain text.
+- **Free Local Data Chatbot:** Added a rule-based chatbot that answers questions from the currently filtered dataframe without paid APIs, API keys, or internet access. It can summarize record counts, class distribution, averages, ranges, highest class averages, correlations, and overall interpretations.
+- **Clean Helper Folder:** Kept `filters.py` focused on filtering and moved supporting KPI/chatbot logic into `helpers/analytics.py` and `helpers/chatbot.py`.
 - **Zero Comments:** Ensured all source files contain absolutely zero comments or developer docstrings.
 
 ---
